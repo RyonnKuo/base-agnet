@@ -2,6 +2,9 @@
 This module defines the llama_chat function for interacting with a local Ollama LLM model.
 """
 import ollama
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import ConversationChain
+from langchain_ollama import OllamaLLM
 
 # llama
 def llama_chat(model_name, prompt_text, b64_image=None):
