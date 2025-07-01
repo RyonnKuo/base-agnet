@@ -2,3 +2,6 @@ langchain-ollama
 langchain
 ollama
 langchain-community
+langchain
+langchain-core
+langchain-text-splitters
