@@ -5,3 +5,5 @@ langchain-community
 langchain
 langchain-core
 langchain-text-splitters
+torch
+transformers

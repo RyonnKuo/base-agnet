@@ -1,6 +1,8 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import Optional, List
 import uuid
+import json
 
 class Memory(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -8,7 +10,9 @@ class Memory(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     last_accessed_at: datetime = Field(default_factory=datetime.now)
     importance: int = 1
-    
+    embedding: Optional[List[float]] = None  # 語意向量
+
+# 記憶流
 class MemoryStream:
     def __init__(self):
         self.memories: list[Memory] = []
@@ -33,3 +37,22 @@ class MemoryStream:
 
     def all(self):
         return self.memories
+    
+    def get_top_memories_by_importance(self, n=5):
+        return sorted(self.memories, key=lambda m: m.importance, reverse=True)[:n]
+
+    def search_by_keyword(self, keyword: str, n=5):
+        return [m for m in self.memories if keyword in m.content][:n]
+    
+    def save_to_file(self, path: str):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump([m.model_dump() for m in self.memories], f, ensure_ascii=False, indent=2)
+
+    def load_from_file(self, path: str):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw_data = json.load(f)
+                self.memories = [Memory(**m) for m in raw_data]
+        except Exception as e:
+            print(f"載入記憶失敗：{e}")
+            
