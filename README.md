@@ -9,3 +9,5 @@ python version: 3.12.8
 perceive -> memory stream -> retrieve -> retrieved memory -> act
 retrieved memory -> plan -> memory stream
 retrieved memory -> reflect -> memory stream
+
+每個村民(agent)都要有自己的profile?
