@@ -7,3 +7,9 @@ langchain-core
 langchain-text-splitters
 torch
 transformers
+sentence-transformers
+scikit-learn
+faiss-cpu
+openai
+tiktoken
+numpy
