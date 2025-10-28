@@ -100,3 +100,18 @@ reflector = ReflectionEngine(llm=llm_llama3_8B,
                              memory_stream=memory_stream,
                              reflection_threshold=20)
 reflector.reflect()
+
+from conversation_loop import ConversationLoop
+
+# 建立對話迴圈物件
+conv_loop = ConversationLoop(
+    agents=agents,
+    memory_stream=memory_stream,
+    reflector=reflector,
+    reflection_interval=2   # 每兩輪觸發一次反思
+)
+
+# 啟動對話流程
+conv_loop.run_round("請大家一起討論氣候變遷對農業的影響。")
+conv_loop.run_round("根據剛剛的討論，再給我一段結論。")
+conv_loop.run_round("請提出可行的調適策略。")  # 這一輪會觸發反思
