@@ -44,8 +44,8 @@ class ConversationLoop:
             patient_name = record["patient_name"]
             notes = record["notes"]
 
-            print(f"\n=== 病歷討論開始：{patient_name} ===")
-            print(f"病歷摘要：{notes}\n")
+            print(f"\n=== 討論開始：{patient_name} ===")
+            print(f"摘要：{notes}\n")
 
             user_input = f"病人 {patient_name} 的描述如下：「{notes}」。請討論應該轉介到哪一個醫學科別，並說明原因。"
 

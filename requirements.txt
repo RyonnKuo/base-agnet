@@ -13,3 +13,4 @@ faiss-cpu
 openai
 tiktoken
 numpy
+pandas
