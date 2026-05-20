@@ -195,14 +195,17 @@ def generate_persona(
 
 
 def generate_persona_group(
-    num_agents: int = 6
+    num_agents: int = 6,
+    seed: Optional[int] = 42
 ) -> List[Persona]:
     """
     批次產生多個 Persona
+    為了實驗嚴謹性，應加入 seed 確保在不同 LLM 測試時，產出的人格完全相同。
     """
+    if seed is not None:
+        random.seed(seed)
 
     personas = []
-
     used_names = set()
 
     while len(personas) < num_agents:
