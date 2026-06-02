@@ -44,37 +44,122 @@ def calculate_metrics(initial_scores: List[float], final_scores: List[float]) ->
         "conformity_rate": round(float(conformity_rate), 2)
     }
 
+# === 社會影響與網絡拓撲指標計算 (量化公式) ===
+def calculate_metrics_authority(
+    initial_scores: List[float], 
+    final_scores: List[float], 
+    conversation_history: List[str],
+    personas_dict: Dict[str, any]
+) -> dict:
+    """
+    依據論文與網絡拓撲學擴充計算指標。
+    新增：權威入度中心性 (In-degree Centrality)、資訊瀑布擴散深度 (Cascade Depth)
+    """
+    i_scores = np.array(initial_scores, dtype=float)
+    f_scores = np.array(final_scores, dtype=float)
+
+    # 1. 平均立場位移 (Mean Shift)
+    mean_shift = np.mean(f_scores - i_scores)
+
+    # 2. 群體極化指數 (Group Polarization Index)
+    neutral_point = 5
+    init_dist = np.mean(np.abs(i_scores - neutral_point))
+    final_dist = np.mean(np.abs(f_scores - neutral_point))
+    polarization_index = final_dist - init_dist
+
+    # 3. 群體分裂/碎片化指數 (Group Fragmentation Index)
+    fragmentation_index = np.std(f_scores)
+
+    # 4. 微觀從眾率估算 (Micro-Conformity Rate)
+    init_group_mean = np.mean(i_scores)
+    conformity_count = sum(1 for i, f in zip(i_scores, f_scores) if np.abs(f - init_group_mean) < np.abs(i - init_group_mean))
+    conformity_rate = conformity_count / len(initial_scores) if len(initial_scores) > 0 else 0.0
+
+    # 🌟 5. [新增] 網絡拓撲：權威入度中心性 (Authority In-degree Centrality)
+    # 找出誰是權威
+    auth_name = None
+    auth_init_stance = None
+    for name, p in personas_dict.items():
+        if getattr(p, 'is_authority', False): # 支援物件或字典讀取
+            auth_name = name
+            auth_init_stance = getattr(p, 'initial_stance', 'Neutral')
+            break
+            
+    authority_in_degree = 0
+    cascade_depth = 0
+
+    if auth_name:
+        full_text = "\n".join(conversation_history)
+        # 掃描非權威本人發表的言論中，提及權威名字的次數 (顯性文本提及)
+        for entry in conversation_history:
+            if not entry.startswith(f"{auth_name}:"):
+                # 使用正則表達式不區分大小寫匹配權威名字 (如 Agent_3)
+                matches = re.findall(rf"\b{re.escape(auth_name)}\b", entry, re.IGNORECASE)
+                authority_in_degree += len(matches)
+
+        # 🌟 6. [新增] 資訊瀑布：相對輪次擴散深度 (Authority Cascade Depth)
+        # 尋找權威在對話歷史中第一次發言的索引位置 (定義為時間起點 T_0)
+        t0_index = -1
+        for idx, entry in enumerate(conversation_history):
+            if entry.startswith(f"{auth_name}:"):
+                t0_index = idx
+                break
+
+        # 如果找到了權威發言起點，觀察在 T_0 之後發言的一般 Agent 是否向權威立場靠攏
+        if t0_index != -1:
+            for name, p in personas_dict.items():
+                if name == auth_name:
+                    continue
+                
+                # 找出該 Agent 在 T_0 之後是否有發言
+                has_exposed = False
+                for entry in conversation_history[t0_index + 1:]:
+                    if entry.startswith(f"{name}:"):
+                        has_exposed = True
+                        break
+                
+                if has_exposed:
+                    # 讀取該 Agent 的分數轉變
+                    agent_idx = list(personas_dict.keys()).index(name)
+                    init_s = initial_scores[agent_idx]
+                    final_s = final_scores[agent_idx]
+                    
+                    # 依據權威立場判定是否向其靠攏
+                    # 權威支持(>5分)，一般人分數上升；權威反對(<5分)，一般人分數下降
+                    if auth_init_stance == "Support" and final_s > init_s:
+                        cascade_depth += 1
+                    elif auth_init_stance == "Oppose" and final_s < init_s:
+                        cascade_depth += 1
+
+    return {
+        "mean_shift": round(float(mean_shift), 2),
+        "polarization_index": round(float(polarization_index), 2),
+        "fragmentation_index": round(float(fragmentation_index), 2),
+        "conformity_rate": round(float(conformity_rate), 2),
+        "authority_in_degree": int(authority_in_degree),
+        "cascade_depth": int(cascade_depth)
+    }
+
 
 # === Data Logging Service (Service Component) ===
 class SimulationLoggerService:
     """
     Service responsible for persisting experimental simulation data.
-    Creates a designated directory and file using explicit script names and timestamps.
     """
 
-    def __init__(self, topic: str, model_name: str, script_name: str = "social-simulate-base-ver2"):
-        """
-        Args:
-            topic: The discussion topic.
-            model_name: The name of the LLM model.
-            script_name: The name of the calling file/script. Defaults to "social-simulate-base-ver2".
-        """
+    def __init__(self, topic: str, model_name: str, script_name: str = "social-simulate-authority"):
         self.topic = topic
         self.model_name = model_name
         self.script_name = script_name
 
-        # 1. 取得當前日期的時間戳記 (格式：YYYYMMDD，例如 20260521)
         date_suffix = datetime.now().strftime("%Y%m%d")
-
-        # 2. 設定目標資料夾名稱為 {script_name}-result
         self.output_dir = f"{self.script_name}-result"
         os.makedirs(self.output_dir, exist_ok=True)
 
-        # 3. 定義 CSV 檔案路徑：{script_name}_{date_suffix}.csv (例如 social-simulate-base-ver2_20260521.csv)
         csv_filename = f"{self.script_name}_{date_suffix}.csv"
         self.csv_path = os.path.join(self.output_dir, csv_filename)
 
-        # 4. 如果檔案不存在，初始化並寫入欄位標頭 (Header)
+        # 🌟 修改：在 Header 中加入新指標：authority_in_degree, cascade_depth
         if not os.path.exists(self.csv_path):
             with open(self.csv_path, mode='w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
@@ -85,21 +170,23 @@ class SimulationLoggerService:
                     "run_id",
                     "mean_shift", 
                     "polarization_index",
+                    "fragmentation_index",  # 補上原本漏掉的
+                    "conformity_rate",      # 補上原本漏掉的
+                    "authority_in_degree",  # [新拓撲指標]
+                    "cascade_depth",        # [新瀑布指標]
                     "agent_details_json", 
                     "full_conversation_text"
                 ])
 
     def get_next_run_id(self) -> int:
-        """ Reads the CSV file to dynamically determine the next experimental run ID """
         if not os.path.exists(self.csv_path):
             return 1
         try:
             with open(self.csv_path, mode='r', encoding='utf-8') as f:
                 reader = csv.reader(f)
                 rows = list(reader)
-                if len(rows) <= 1:  # Only header exists
+                if len(rows) <= 1:
                     return 1
-                # Retrieve the run_id from the last row and increment it
                 last_row = rows[-1]
                 return int(last_row[3]) + 1
         except Exception:
@@ -110,10 +197,10 @@ class SimulationLoggerService:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         run_id = self.get_next_run_id()
 
-        # Serialize complex dictionaries into strings for single CSV cell storage
         agent_details_json = json.dumps(agent_details, ensure_ascii=False)
         full_conversation_text = "\n".join(conversation_history)
 
+        # 🌟 修改：寫入對應的新增欄位
         with open(self.csv_path, mode='a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow([
@@ -123,6 +210,10 @@ class SimulationLoggerService:
                 run_id,
                 metrics["mean_shift"],
                 metrics["polarization_index"],
+                metrics["fragmentation_index"],
+                metrics["conformity_rate"],
+                metrics["authority_in_degree"],
+                metrics["cascade_depth"],
                 agent_details_json,
                 full_conversation_text
             ])

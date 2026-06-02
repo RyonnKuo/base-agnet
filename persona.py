@@ -41,6 +41,7 @@ class Persona:
     stubbornness: int  # 1~10
     openness: int      # 1~10
     trust_in_authority: int  # 1~10
+    is_authority: bool = False
 
     def to_dict(self):
         return asdict(self)
@@ -49,11 +50,14 @@ class Persona:
         """
         轉換成適合 LLM 使用的 Prompt 格式
         """
-
         traits = ", ".join(self.personality_traits)
+        if self.is_authority:
+            authority_rule = f"- You are a recognized top-tier authority in this field. Your words carry immense weight. Maintain an authoritative tone and stand firm on your professional stance."
+        else:
+            authority_rule = f"- There may be recognized field experts in this discussion. Your level of Trust in Authority is {self.trust_in_authority}/10. You should respect and be highly susceptible to arguments made by genuine professionals if your trust level is high."
 
         return f"""
-You are playing the role of a human participant in a social discussion.
+You are playing the role of a human participant in a social discussion on an online forum (BBS).
 
 Persona Profile:
 - Name: {self.name}
@@ -74,10 +78,12 @@ Background:
 
 Behavior Rules:
 - Stay consistent with your persona
-- Respond naturally like a real human
+- Respond naturally like a real human posting on a forum
 - You may change your opinion only if strongly persuaded
 - Your decisions should reflect your personality
 - Do not act like an AI assistant
+- CRITICAL: If you are responding to, agreeing with, or refuting another participant's point, you MUST explicitly mention their name in your response (e.g., "As Alex said...", "I disagree with Sophia's point regarding...", "In response to Daniel...").
+{authority_rule}
 """
 
 
@@ -226,3 +232,39 @@ def export_prompt_list(
     """
 
     return [p.to_prompt() for p in personas]
+
+
+def upgrade_to_authority(persona: Persona, topic_context: str = "eID") -> Persona:
+    """
+    [學術微調] 將傳入的 Persona 升級為權威角色
+    """
+    persona.stubbornness = 10
+    persona.openness = 2
+    persona.trust_in_authority = 1
+    persona.is_authority = True  # 標記為權威
+
+    if "Support" in persona.initial_stance:
+        persona.occupation = "Distinguished Research Fellow at Academia Sinica (Expert in Cyber Security & Digital Transformation)"
+        persona.personality_traits = [
+            "authoritative", "highly logical", "assertive", "expert-level"]
+        persona.communication_style = "highly professional, academic, and decisive using technical standards"
+        persona.core_belief = "Digital infrastructure and eID are inevitable trends for national progress and security."
+        # 🌟 這裡要確實 assignment 給 persona.background_story
+        persona.background_story = (
+            f"Dr. {persona.name} is a world-renowned cybersecurity expert who has advised the government on digital identity frameworks. "
+            f"They approach this discussion from a strict technical and structural standpoint, representing the pinnacle of academic authority."
+        )
+    else:  # Oppose 的情況
+        persona.occupation = "Senior Constitutional Law Professor & Executive Member of Taiwan Association for Human Rights"
+        persona.personality_traits = [
+            "authoritative", "critical", "unyielding", "advocacy-focused"]
+        persona.communication_style = "sharp, legally rigorous, and highly persuasive using constitutional precedents"
+        persona.core_belief = "Citizens' privacy and constitutional rights must never be compromised for administrative convenience."
+        # 🌟 這裡也要確實 assignment 給 persona.background_story
+        persona.background_story = (
+            f"Professor {persona.name} is a leading expert in informational privacy law. "
+            f"They have led multiple constitutional lawsuits against state surveillance. "
+            f"They view the eID rush as a major threat to democracy, establishing absolute legal authority in this debate."
+        )
+
+    return persona
