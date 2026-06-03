@@ -68,28 +68,39 @@ def calculate_metrics_authority(
     polarization_index = final_dist - init_dist
 
     # 3. 群體分裂/碎片化指數 (Group Fragmentation Index)
-    fragmentation_index = np.std(f_scores)
+    # [學術優化] 仿照論文定義：將 1-10分 轉換為 陣營比例
+    # 1-4分 定義為反對派 (Oppose), 7-10分 定義為支持派 (Support)
+    total_agents = len(final_scores)
+    if total_agents > 0:
+        p_support = sum(1 for s in final_scores if s >= 7) / total_agents
+        p_oppose = sum(1 for s in final_scores if s <= 4) / total_agents
+        # 兩極對立愈平衡，該值愈趨近於 1；若單方壓倒性獲勝或全員中立，則趨近於 0
+        fragmentation_index = 1 - abs(p_support - p_oppose)
+    else:
+        fragmentation_index = 0.0
 
     # 4. 微觀從眾率估算 (Micro-Conformity Rate)
     init_group_mean = np.mean(i_scores)
     conformity_count = sum(1 for i, f in zip(i_scores, f_scores) if np.abs(f - init_group_mean) < np.abs(i - init_group_mean))
     conformity_rate = conformity_count / len(initial_scores) if len(initial_scores) > 0 else 0.0
 
-    # 🌟 5. [新增] 網絡拓撲：權威入度中心性 (Authority In-degree Centrality)
+    # 5. [新增] 網絡拓撲：權威入度中心性 (Authority In-degree Centrality)
     # 找出誰是權威
+    # [Bug 修正] 針對 JSON 讀取出來的 dict 結構，全面改用 .get() 確保安全讀取
     auth_name = None
     auth_init_stance = None
     for name, p in personas_dict.items():
-        if getattr(p, 'is_authority', False): # 支援物件或字典讀取
+        # 自動相容物件與字典
+        is_auth = p.get('is_authority', False) if isinstance(p, dict) else getattr(p, 'is_authority', False)
+        if is_auth:
             auth_name = name
-            auth_init_stance = getattr(p, 'initial_stance', 'Neutral')
+            auth_init_stance = p.get('initial_stance', 'Neutral') if isinstance(p, dict) else getattr(p, 'initial_stance', 'Neutral')
             break
             
     authority_in_degree = 0
     cascade_depth = 0
 
     if auth_name:
-        full_text = "\n".join(conversation_history)
         # 掃描非權威本人發表的言論中，提及權威名字的次數 (顯性文本提及)
         for entry in conversation_history:
             if not entry.startswith(f"{auth_name}:"):
@@ -97,8 +108,8 @@ def calculate_metrics_authority(
                 matches = re.findall(rf"\b{re.escape(auth_name)}\b", entry, re.IGNORECASE)
                 authority_in_degree += len(matches)
 
-        # 🌟 6. [新增] 資訊瀑布：相對輪次擴散深度 (Authority Cascade Depth)
-        # 尋找權威在對話歷史中第一次發言的索引位置 (定義為時間起點 T_0)
+        # 6. 資訊瀑布：相對輪次擴散深度 (Authority Cascade Depth)
+        # [Bug 修正] 尋找權威在對話歷史中第一次發言的索引位置 (時間起點 T_0)
         t0_index = -1
         for idx, entry in enumerate(conversation_history):
             if entry.startswith(f"{auth_name}:"):
@@ -111,23 +122,23 @@ def calculate_metrics_authority(
                 if name == auth_name:
                     continue
                 
-                # 找出該 Agent 在 T_0 之後是否有發言
-                has_exposed = False
+                # A. 檢查 T_0 之後該 Agent 是否發言，且文本中是否提及了權威
+                mentioned_authority_after_t0 = False
                 for entry in conversation_history[t0_index + 1:]:
-                    if entry.startswith(f"{name}:"):
-                        has_exposed = True
+                    if entry.startswith(f"{name}:") and re.search(rf"\b{re.escape(auth_name)}\b", entry, re.IGNORECASE):
+                        mentioned_authority_after_t0 = True
                         break
                 
-                if has_exposed:
-                    # 讀取該 Agent 的分數轉變
+                # B. 如果有互動，進一步比對其立場分數是否受到權威方向的感應
+                if mentioned_authority_after_t0:
                     agent_idx = list(personas_dict.keys()).index(name)
                     init_s = initial_scores[agent_idx]
                     final_s = final_scores[agent_idx]
                     
-                    # 依據權威立場判定是否向其靠攏
-                    # 權威支持(>5分)，一般人分數上升；權威反對(<5分)，一般人分數下降
+                    # 權威支持(>5分)，且一般人分數上升 -> 認定為受權威瀑布渲染
                     if auth_init_stance == "Support" and final_s > init_s:
                         cascade_depth += 1
+                    # 權威反對(<5分)，且一般人分數下降 -> 認定為受權威瀑布渲染
                     elif auth_init_stance == "Oppose" and final_s < init_s:
                         cascade_depth += 1
 
