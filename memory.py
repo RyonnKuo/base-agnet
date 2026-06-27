@@ -21,6 +21,7 @@ class Memory(BaseModel):
 class MemoryStream:
     def __init__(self, embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.memories: list[Memory] = []
+        self.memory_map: dict[str, Memory] = {}  # O(1) 快速查詢字典
         self.embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
         # 取得 embedding 維度
         sample_embed = self.embeddings.embed_query("Hello world")
@@ -43,6 +44,9 @@ class MemoryStream:
         memory = Memory(content=content, importance=importance, embedding=embedding)
         self.memories.append(memory)
 
+        # 寫入字典
+        self.memory_map[memory.id] = memory
+
         # 加入 FAISS
         # self.vector_store.add_texts([content], metadatas=[{"id": memory.id}])
         # return memory
@@ -63,7 +67,7 @@ class MemoryStream:
         results = []
         for d in docs:
             mem_id = d.metadata.get("id")
-            mem = next((m for m in self.memories if m.id == mem_id), None)
+            mem = self.memory_map.get(mem_id)
             if mem:
                 results.append(mem)
         return results
