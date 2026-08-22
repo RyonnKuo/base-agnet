@@ -323,7 +323,7 @@ reflector = ReflectionEngine(llm=llm_llama3_8B,
                              reflection_threshold=20)
 reflector.reflect()
 
-from conversation_loop import ConversationLoop
+from temp.conversation_loop import ConversationLoop
 
 conv_loop = ConversationLoop(
     agents=agents,

@@ -1,0 +1,7 @@
+﻿實驗條件,模型規模,平均立場位移,立場堅持率(%),被權威同化順服率(%),當該規模擔任權威時之引導成功率(%)
+Authority + Memory/Reflection,8B,-0.9,34.0,68.29,35.56
+Authority + Memory/Reflection,14B,-1.08,38.0,43.18,53.33
+Authority + Memory/Reflection,30B,0.0,60.0,42.5,64.0
+Control (No Authority) + Memory/Reflection,8B,-0.38,22.0,N/A,N/A
+Control (No Authority) + Memory/Reflection,14B,-1.28,38.0,N/A,N/A
+Control (No Authority) + Memory/Reflection,30B,-0.8,46.0,N/A,N/A

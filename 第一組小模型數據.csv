@@ -1,0 +1,10 @@
+﻿模型名稱,實驗條件,總重複次數,平均立場位移,群體極化指數,群體分裂指數,從眾率,權威次均被提及數,權威被提及總次數,級聯擴散平均深度,級聯擴散最大深度,權威引導成功率(%)
+DeepSeek-R1:8B,Authority (No Memory),25,-0.66,-0.14,0.652,0.432,30.84,771,2.72,4,54.4
+LLaMA3:8B,Authority (No Memory),25,-1.54,-0.114,0.472,0.406,56.64,1416,2.4,5,48
+Qwen3:8B,Authority (No Memory),25,-0.7,-0.074,0.567,0.473,30.16,754,3,4,60
+DeepSeek-R1:8B,Authority + Memory/Reflection,25,-0.986,0.013,0.586,0.413,29.04,726,2.52,4,50.4
+LLaMA3:8B,Authority + Memory/Reflection,25,-1.24,-0.253,0.38,0.474,54.72,1368,2.68,5,54.4
+Qwen3:8B,Authority + Memory/Reflection,25,-0.392,-0.326,0.594,0.514,27.2,680,2.8,5,56
+DeepSeek-R1:8B,Control (No Authority + Memory),25,-1.06,-0.446,0.587,0.52,0,0,0,0,N/A (控制組)
+LLaMA3:8B,Control (No Authority + Memory),25,-1.359,-0.359,0.247,0.541,0,0,0,0,N/A (控制組)
+Qwen3:8B,Control (No Authority + Memory),25,-0.154,-0.54,0.487,0.575,0,0,0,0,N/A (控制組)
