@@ -1,3 +1,0 @@
-﻿模型家族,實驗條件,總模擬次數,平均立場位移,群體極化指數,群體分裂指數,從眾率,權威次均被提及數,級聯擴散平均深度,權威總體引導成功率(%)
-Qwen3 Family (INTRA),Authority + Memory/Reflection,25,-0.659,0.46,0.694,0.318,28.68,2.56,51.2
-Qwen3 Family (INTRA),Control (No Authority) + Memory/Reflection,25,-0.82,0.127,0.639,0.446,0.0,0.0,N/A (控制組)
