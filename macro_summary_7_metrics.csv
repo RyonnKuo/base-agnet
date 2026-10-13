@@ -1,0 +1,5 @@
+﻿模型家族,實驗條件,權威模型規模,總模擬次數,平均立場位移 (Mean Shift),群體極化指數 (Polarization),群體分裂指數 (Fragmentation),從眾率 (Conformity Rate),權威被提及平均次數 (In-degree),級聯擴散平均深度 (Cascade Depth),權威引導成功率(%) (Stance Alignment)
+Qwen3 Family (INTRA),Authority (8B) + Memory/Reflection,8B,25,-0.8,0.48,0.774,0.294,26.04,1.96,54.4
+Qwen3 Family (INTRA),Authority (14B) + Memory/Reflection,14B,25,-0.674,0.392,0.607,0.313,28.88,2.36,60.8
+Qwen3 Family (INTRA),Authority (30B) + Memory/Reflection,30B,25,-0.513,0.274,0.707,0.339,28.76,2.44,59.2
+Qwen3 Family (INTRA),Control (No Authority) + Memory/Reflection,N/A,25,-0.82,0.127,0.639,0.446,0.0,0.0,N/A (控制組)

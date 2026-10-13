@@ -1,0 +1,13 @@
+﻿實驗條件,權威模型規模,一般Agent模型規模,平均立場位移,立場堅持率(%),被權威同化順服率(%)
+Authority (8B) + Memory/Reflection,8B,8B,-1.0,20.0,84.0
+Authority (8B) + Memory/Reflection,8B,14B,-0.88,48.0,56.0
+Authority (8B) + Memory/Reflection,8B,30B,-0.38,42.0,38.0
+Authority (14B) + Memory/Reflection,14B,8B,-0.6,32.0,72.0
+Authority (14B) + Memory/Reflection,14B,14B,-0.72,44.0,40.0
+Authority (14B) + Memory/Reflection,14B,30B,-0.78,44.0,60.0
+Authority (30B) + Memory/Reflection,30B,8B,-0.56,18.0,62.0
+Authority (30B) + Memory/Reflection,30B,14B,-1.18,42.0,62.0
+Authority (30B) + Memory/Reflection,30B,30B,0.84,52.0,48.0
+Control (No Authority) + Memory/Reflection,N/A,8B,-0.38,22.0,N/A
+Control (No Authority) + Memory/Reflection,N/A,14B,-1.28,38.0,N/A
+Control (No Authority) + Memory/Reflection,N/A,30B,-0.8,46.0,N/A
