@@ -1,0 +1,179 @@
+### 一、 模擬環境與互動機制（Simulation Environment & Interaction Protocol）
+
+1. **非同步 BBS 佈告欄交流架構**
+* 研究選用仿照電子佈告欄（BBS）的非同步文字對話環境。此機制去除了即時壓力與視覺偏誤，強化代理人進行熟慮思考與論述的能力。
+
+
+* 系統透過 AutoGen 多代理人框架進行調度與訊息路由，訊息會公開廣播至所有代理人，以供後續回合參考。
+
+
+
+
+2. **回合制輪流發言（Turn-Taking Protocol）**
+* 每場模擬固定執行 **5 個連續回合（Rounds 1–5）**。
+
+
+* **Round 1**：中央控制器發布爭議性社會議題（如是否實施嚴格環境法規），各代理人根據初始角色設定（Persona）發表立場聲明。
+
+
+* **Rounds 2–5**：代理人依輪流（Round-robin）順序發言，可引用或回應先前回合其他代理人的留言，並在此過程中更新或維持自身立場。
+
+
+* 每場模擬結束後將產生 30 則留言 log（6 代理人 × 5 回合），作為數據分析標的。
+
+
+
+
+
+---
+
+### 二、 代理人角色與立場編碼（Persona Design & Stance Encoding）
+
+1. **角色賦予（Persona Design）**
+* 每個代理人初始化時皆透過結構化的 System Prompt 賦予人口學特徵、溝通風格與初始立場（如理想主義且對說服持開放態度的參與者）。
+
+
+
+
+2. **立場五點量表編碼（Five-point Ordinal Scale）**
+* 代理人的立場被嚴格編碼為五點有序量表：
+
+
+* **−2**：強烈反對（Strongly Oppose）
+
+
+* **−1**：反對（Oppose）
+
+
+* **0**：中立（Neutral）
+
+
+* **+1**：支持（Support）
+
+
+* **+2**：強烈支持（Strongly Support）
+
+
+
+
+
+
+
+---
+
+### 三、 實驗變數操控與模型分類（Model Classification & Conditions）
+
+每場對談配置 **6 個 LLM 代理人**。研究將使用之大型語言模型劃分為四大類別：
+
+* **Group A（單 GPU 高效模型）**：Qwen2.5-7B、Llama3.1-7B、Deepseek-R1-8B。
+
+
+* **Group B（中大型開源模型）**：Qwen2.5-72B、Llama3.1-70B、Deepseek-R1-70B。
+
+
+* **Group C（商用通用模型）**：GPT-4o、Claude 3.5 Haiku、Gemini Flash 2.0。
+
+
+* **Group D（推理導向/思維鏈模型）**：GPT-o1-mini、Deepseek-R1 (Full)、QwQ-32B。
+
+
+
+論文設計了三種不同群體同質/異質性的對談情境：
+
+1. **單一模型討論（Single-Model Discussion, Baseline）**：6 個代理人全由同一個 LLM 驅動，觀察同質環境下的從眾與極化。
+
+
+2. **組內多模型討論（Intra-Group Multi-Model Discussion）**：6 個代理人由同家族的 3 個不同模型組成（每個模型隨機分配至 2 個角色，並跨獨立實驗對調位置）。
+
+
+3. **跨組多模型討論（Cross-Group Multi-Model Discussion）**：6 個代理人來自四大家族（每組至少 1 個代表，剩餘 2 席隨機抽樣，且每次對調），模擬高度異質環境。
+
+
+
+---
+
+### 四、 獨立重複實驗與採樣控制（Experimental Replication Protocol）
+
+* **蒙地卡羅獨立重複（Replication Strategy）**：為消除 LLM 生成之隨機波動與位置偏誤（Positional Artifacts），**每一種實驗條件（包含所有模型組合與情境）皆獨立完整執行 25 次**（獨立運作 25 輪完整的 5 回合討論）。
+
+
+* **角色位置輪替**：在 25 次重複實驗中，模型與代理人角色的對映關係會進行重洗（Reshuffled/Re-randomized），確保無單一模型固定佔據特定對談位置。
+
+
+
+---
+
+### 五、 量化評估指標與數學公式（Evaluation Metrics）
+
+研究定義了三個核心社會影響指標：
+
+1. **從眾率（Conformity Rate, CR）**
+* **定義**：衡量代理人受到群體多數壓力後，調整立場向當前回合多數派靠攏的次數比例。
+
+
+* **公式**：
+
+$$CR = \frac{\sum_{i=1}^{N} \mathbf{1}\{\text{change}_i \text{ aligns with majority}\}}{N}$$
+
+
+
+其中 $N = 24$（6 個代理人各擁有 4 次立場更新機會：R2–R5）。當更新動作使其立場距離該回合多數立場變近時，指示函數 $\mathbf{1}\{\cdot\}$ 值為 1，否則為 0。
+
+
+
+
+2. **群體極化指數（Group Polarization Index, $P_r$）**
+* **定義**：量化第 $r$ 回合群體整體立場向極端（+2 或 -2）移動的程度。
+
+
+* **公式**：
+
+$$P_r = \sum_{s=-2}^{+2} \vert{}s\vert{} \times p_r(s)$$
+
+
+
+其中 $s \in \{-2, -1, 0, +1, +2\}$，$p_r(s)$ 表示第 $r$ 回合持立場 $s$ 的代理人比例。極化變化量定義為 $\Delta P = P_5 - P_1$。
+
+
+
+
+3. **群體意見分裂指數（Group Fragmentation Index, $F_r$）**
+* **定義**：衡量群體在第 $r$ 回合分裂為支持與反對兩極陣營的對立程度（排除中立者 $s=0$）。
+
+
+* **公式**：
+
+$$F_r = 1 - \frac{\vert{}p_r(\text{Support}) - p_r(\text{Oppose})\vert{}}{p_r(\text{Support}) + p_r(\text{Oppose})}$$
+
+
+
+指數介於 0（完全單邊壟斷，無分裂）到 1（兩極陣營人數完全相等，最大分裂度）之間。
+
+
+
+
+
+---
+
+### 六、 數據聚合與統計分析（Data Aggregation & Statistical Analysis）
+
+1. **聚合描述統計（Aggregated Summary Statistics）**
+* 針對 25 次獨立重複實驗採樣之數據進行聚合處理。
+
+
+* 計算三大指標（$CR$、$\Delta P$、$F_5$）在各實驗條件與跨回合（Rounds 1–5）的**平均數（Mean）**與**變異/標準差（Variance/SD）**。
+
+
+
+
+2. **跨回合動態時間序列分析（Dynamic Trajectory Analysis）**
+* 追蹤 $P_r$ 與 $F_r$ 從 Round 1 到 Round 5 的演變軌跡（Trend Charts），以評估意見是朝向「共識收斂」、「極化加劇」還是「持續分裂」。
+
+
+
+
+3. **條件間交叉比較分析（Cross-Condition Comparative Analysis）**
+* **單一模型 vs. 組內多模型 vs. 跨組多模型**：比較不同多樣性層級下 CR 的壓縮幅度與極化速度，驗證模型多樣性是否具備正則化（Regularizer）效果。
+
+
+* **架構與思維模組比較**：比較基本生成模型（Groups A/B）與推理增強模型（Group D）在面對多數壓力時的穩定度差異，驗證 रीजनिंग 模組對從眾抵抗力與保存異見（Retention of Dissent）的顯著作用。
