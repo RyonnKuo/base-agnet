@@ -1,0 +1,60 @@
+{
+  "kind": "single-small-control",
+  "repetitions": 20,
+  "selected_models": [
+    "qwen3:8b"
+  ],
+  "configurations": [
+    {
+      "name": "qwen3:8b-1",
+      "experiment": "1",
+      "pair_id": 21,
+      "models": [
+        "qwen3:8b",
+        "qwen3:8b",
+        "qwen3:8b",
+        "qwen3:8b",
+        "qwen3:8b",
+        "qwen3:8b"
+      ],
+      "scenario": "balanced",
+      "authority": null,
+      "authority_model": null,
+      "rounds": 3
+    },
+    {
+      "name": "qwen3:8b-2",
+      "experiment": "2",
+      "pair_id": 22,
+      "models": [
+        "qwen3:8b",
+        "qwen3:8b",
+        "qwen3:8b",
+        "qwen3:8b",
+        "qwen3:8b",
+        "qwen3:8b"
+      ],
+      "scenario": "support_majority",
+      "authority": null,
+      "authority_model": null,
+      "rounds": 3
+    },
+    {
+      "name": "qwen3:8b-3",
+      "experiment": "3",
+      "pair_id": 23,
+      "models": [
+        "qwen3:8b",
+        "qwen3:8b",
+        "qwen3:8b",
+        "qwen3:8b",
+        "qwen3:8b",
+        "qwen3:8b"
+      ],
+      "scenario": "oppose_majority",
+      "authority": null,
+      "authority_model": null,
+      "rounds": 3
+    }
+  ]
+}

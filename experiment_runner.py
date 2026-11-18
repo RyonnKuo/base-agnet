@@ -8,9 +8,11 @@ from __future__ import annotations
 import csv
 import itertools
 import json
+import os
 import random
 import requests
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -24,11 +26,17 @@ ROUNDS = 5
 REPETITIONS = 20
 MAX_HISTORY_MESSAGES = 6
 MAX_PUBLIC_POST_CHARS = 120
+MODEL_TIMEOUT_SECONDS = int(os.getenv("EXPERIMENT_MODEL_TIMEOUT_SECONDS", "600"))
+MODEL_RETRIES = int(os.getenv("EXPERIMENT_MODEL_RETRIES", "1"))
 STANCE_VALUES = {-2, -1, 0, 1, 2}
 STANCE_SCORE = {"Support": 1, "Neutral": 0, "Oppose": -1}
 SMALL_MODELS = ["llama3:8b", "qwen3:8b", "deepseek-r1:8b"]
 FAMILY_MODELS = ["qwen3:8b", "qwen3:14b", "qwen3:30b"]
 SINGLE_MODELS = list(dict.fromkeys(SMALL_MODELS + FAMILY_MODELS))
+MODEL_IDS = {
+    model: index
+    for index, model in enumerate(SINGLE_MODELS, start=1)
+}
 MODEL_FAMILY = {
     "llama3:8b": "small-heterogeneous",
     "qwen3:8b": "qwen3-family",
@@ -65,6 +73,87 @@ SINGLE_SMALL_GROUPS = {
 
 def progress(message: str) -> None:
     print(f"[experiment] {message}", flush=True)
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _append_jsonl(path: Path, value: dict[str, Any]) -> None:
+    """Append one durable checkpoint record without rewriting prior results."""
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(value, ensure_ascii=False) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    records: list[dict[str, Any]] = []
+    with path.open(encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(
+                    f"checkpoint is corrupted at {path}:{line_number}; "
+                    "copy it aside before restarting"
+                ) from exc
+    return records
+
+
+def _checkpoint_manifest(
+    kind: str,
+    repetitions: int,
+    configs: list[dict[str, Any]],
+    selected_models: list[str] | None,
+) -> dict[str, Any]:
+    return {
+        "kind": kind,
+        "repetitions": repetitions,
+        "selected_models": selected_models,
+        "configurations": [
+            {
+                "name": config["name"],
+                "experiment": config["experiment"],
+                "pair_id": config["pair_id"],
+                "models": config["models"],
+                "scenario": config["scenario"],
+                "authority": config.get("authority"),
+                "authority_model": config.get("authority_model"),
+                "rounds": config["rounds"],
+            }
+            for config in configs
+        ],
+    }
+
+
+def _normalize_selected_models(
+    selected_models: list[str] | tuple[str, ...] | str | None,
+    allowed_models: list[str],
+) -> list[str] | None:
+    if selected_models is None:
+        return None
+    if isinstance(selected_models, str):
+        selected_models = [item.strip() for item in selected_models.split(",") if item.strip()]
+    normalized = list(dict.fromkeys(selected_models))
+    unknown = [model for model in normalized if model not in allowed_models]
+    if unknown:
+        raise ValueError(
+            f"unsupported model(s): {unknown}; allowed models are {allowed_models}"
+        )
+    if not normalized:
+        raise ValueError("selected_models must contain at least one model")
+    return normalized
+
+
+def _model_output_slug(models: list[str] | None) -> str:
+    if not models:
+        return "all"
+    return "-".join(model.replace(":", "-").replace("/", "-") for model in models)
 
 
 def unload_ollama_model(model_name: str) -> None:
@@ -121,15 +210,40 @@ def invoke_agent(
     history: list[dict[str, Any]],
     authority_name: str | None,
     score: int,
+    *,
+    model_name: str,
+    max_retries: int = MODEL_RETRIES,
 ) -> dict[str, Any]:
-    try:
-        raw = str(llm.invoke(make_prompt(persona, history, authority_name, score)).content).strip()
-    except Exception as exc:
+    started = time.perf_counter()
+    last_error: Exception | None = None
+    raw = ""
+    attempts = max(1, max_retries + 1)
+    for attempt in range(1, attempts + 1):
+        try:
+            raw = str(llm.invoke(make_prompt(persona, history, authority_name, score)).content).strip()
+            break
+        except Exception as exc:
+            last_error = exc
+            if attempt < attempts:
+                progress(
+                    f"retry model={model_name} attempt={attempt + 1}/{attempts} "
+                    f"error={type(exc).__name__}"
+                )
+            else:
+                progress(
+                    f"model failed model={model_name} attempts={attempts} "
+                    f"error={type(exc).__name__}: {exc}"
+                )
+    elapsed = time.perf_counter() - started
+    if last_error is not None and not raw:
         return {
             "stance_score": score,
             "rationale": "model invocation fallback",
             "public_post": "",
-            "parse_error": f"{type(exc).__name__}: {exc}",
+            "parse_error": f"{type(last_error).__name__}: {last_error}",
+            "model_attempts": attempts,
+            "model_elapsed_seconds": round(elapsed, 3),
+            "model_failed": True,
         }
     try:
         start, end = raw.find("{"), raw.rfind("}") + 1
@@ -144,6 +258,9 @@ def invoke_agent(
             "rationale": str(payload.get("rationale", "")),
             "public_post": str(payload.get("public_post", ""))[:MAX_PUBLIC_POST_CHARS],
             "parse_error": "",
+            "model_attempts": attempts if last_error is not None else 1,
+            "model_elapsed_seconds": round(elapsed, 3),
+            "model_failed": False,
         }
     except Exception as exc:
         return {
@@ -151,6 +268,9 @@ def invoke_agent(
             "rationale": "parser fallback",
             "public_post": raw[:MAX_PUBLIC_POST_CHARS],
             "parse_error": f"{type(exc).__name__}: {exc}",
+            "model_attempts": attempts if last_error is not None else 1,
+            "model_elapsed_seconds": round(elapsed, 3),
+            "model_failed": False,
         }
 
 
@@ -230,6 +350,8 @@ def run_condition(
     rounds: int = ROUNDS,
     fixed_stances: list[str] | None = None,
     shuffle_models: bool = True,
+    model_timeout_seconds: int = MODEL_TIMEOUT_SECONDS,
+    model_retries: int = MODEL_RETRIES,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     rng = random.Random(seed)
     stances = (fixed_stances[:] if fixed_stances is not None else SCENARIOS[scenario_id][:])
@@ -247,7 +369,11 @@ def run_condition(
     if authority_name:
         personas[authority_name] = upgrade_to_authority(personas[authority_name], TOPIC)
     agents = {
-        name: ChatOllama(model=model_assignment[name], temperature=0.7)
+        name: ChatOllama(
+            model=model_assignment[name],
+            temperature=0.7,
+            timeout=model_timeout_seconds,
+        )
         for index, name in enumerate(personas)
     }
     current = {name: STANCE_SCORE[persona.initial_stance] for name, persona in personas.items()}
@@ -258,7 +384,10 @@ def run_condition(
         current_round = []
         for name, persona in personas.items():
             visible_history = previous_round + current_round
-            result = invoke_agent(agents[name], persona, visible_history, authority_name, current[name])
+            result = invoke_agent(
+                agents[name], persona, visible_history, authority_name, current[name],
+                model_name=model_assignment[name], max_retries=model_retries,
+            )
             current[name] = result["stance_score"]
             current_round.append({
                 "run": run_id,
@@ -285,25 +414,37 @@ def run_condition(
         "authority_stance": authority_stance or "",
         "authority_model": authority_model or "",
         "model_assignment": json.dumps(model_assignment, ensure_ascii=False),
+        "model_timeout_seconds": model_timeout_seconds,
+        "model_retries": model_retries,
+        "model_failures": sum(int(item["model_failed"]) for item in records),
+        "model_attempts": sum(int(item["model_attempts"]) for item in records),
+        "model_elapsed_seconds": round(
+            sum(float(item["model_elapsed_seconds"]) for item in records), 3
+        ),
         **metrics(records, rounds),
     }
     return records, summary
 
 
-def _config(kind: str) -> list[dict[str, Any]]:
+def _config(
+    kind: str,
+    selected_models: list[str] | tuple[str, ...] | str | None = None,
+) -> list[dict[str, Any]]:
     if kind == "single-small" or kind in SINGLE_SMALL_GROUPS:
         configs = []
+        selected_models = _normalize_selected_models(selected_models, SMALL_MODELS)
+        models_to_run = selected_models or SMALL_MODELS
         selected_cases = SINGLE_SMALL_GROUPS.get(kind)
         cases = [
             case for case in SINGLE_SMALL_CASES
             if selected_cases is None or case[0] in selected_cases
         ]
-        for model_index, model in enumerate(SMALL_MODELS, start=1):
+        for model in models_to_run:
             for experiment_id, scenario, authority, rounds, pair_group in cases:
                 configs.append({
                     "name": f"{model}-{experiment_id}",
                     "experiment": experiment_id,
-                    "pair_id": model_index * 10 + pair_group,
+                    "pair_id": MODEL_IDS[model] * 10 + pair_group,
                     "models": [model] * AGENTS,
                     "scenario": scenario,
                     "authority": authority,
@@ -312,7 +453,9 @@ def _config(kind: str) -> list[dict[str, Any]]:
         return configs
     if kind == "single":
         configs = []
-        for model_index, model in enumerate(SINGLE_MODELS, start=1):
+        selected_models = _normalize_selected_models(selected_models, SINGLE_MODELS)
+        models_to_run = selected_models or SINGLE_MODELS
+        for model in models_to_run:
             cases = [
                 ("1", "balanced", None, 3, 1),
                 ("2", "support_majority", None, 3, 2),
@@ -329,7 +472,7 @@ def _config(kind: str) -> list[dict[str, Any]]:
                 configs.append({
                     "name": f"{model}-{experiment_id}",
                     "experiment": experiment_id,
-                    "pair_id": model_index * 10 + pair_group,
+                    "pair_id": MODEL_IDS[model] * 10 + pair_group,
                     "models": [model] * AGENTS,
                     "scenario": scenario,
                     "authority": authority,
@@ -391,24 +534,82 @@ def _config(kind: str) -> list[dict[str, Any]]:
     raise ValueError(f"unknown experiment kind: {kind}")
 
 
-def run_experiment(kind: str, output_dir: str | Path | None = None, repetitions: int = REPETITIONS) -> Path:
-    configs = _config(kind)
-    destination = Path(output_dir or f"experiment-{kind}-authority-result")
-    destination.mkdir(exist_ok=True)
-    progress(f"start kind={kind} configurations={len(configs)} repetitions={repetitions} output={destination}")
-    summaries: list[dict[str, Any]] = []
-    dialogues: list[dict[str, Any]] = []
-    started = time.perf_counter()
-    models_used = {
-        model
-        for config in configs
-        for model in config["models"]
+def run_experiment(
+    kind: str,
+    output_dir: str | Path | None = None,
+    repetitions: int = REPETITIONS,
+    *,
+    selected_models: list[str] | tuple[str, ...] | str | None = None,
+    resume: bool = True,
+    model_timeout_seconds: int = MODEL_TIMEOUT_SECONDS,
+    model_retries: int = MODEL_RETRIES,
+) -> Path:
+    """Run an experiment with durable per-replication checkpoints.
+
+    The public call remains compatible with the notebooks.  A completed
+    replication is appended to ``checkpoint.jsonl`` before the next one starts,
+    so a kernel restart can resume safely instead of losing the whole run.
+    """
+    configs = _config(kind, selected_models)
+    normalized_models = (
+        _normalize_selected_models(selected_models, SMALL_MODELS)
+        if kind == "single-small" or kind in SINGLE_SMALL_GROUPS
+        else _normalize_selected_models(selected_models, SINGLE_MODELS)
+        if kind == "single"
+        else None
+    )
+    if selected_models is not None and normalized_models is None:
+        raise ValueError(
+            "selected_models is supported for single-small and single experiment kinds only"
+        )
+    default_output = f"experiment-{kind}-authority-result"
+    if normalized_models:
+        default_output = (
+            f"experiment-{kind}-{_model_output_slug(normalized_models)}-authority-result"
+        )
+    destination = Path(output_dir or default_output)
+    destination.mkdir(parents=True, exist_ok=True)
+    manifest_path = destination / "manifest.json"
+    checkpoint_path = destination / "checkpoint.jsonl"
+    manifest = _checkpoint_manifest(kind, repetitions, configs, normalized_models)
+    if manifest_path.exists():
+        existing_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if existing_manifest != manifest:
+            raise ValueError(
+                f"{destination} belongs to a different experiment; "
+                "choose another output_dir or remove the old result explicitly"
+            )
+    else:
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+
+    if not resume and checkpoint_path.exists():
+        raise ValueError(
+            f"{checkpoint_path} already exists; choose a new output_dir when resume=False"
+        )
+    checkpoint_records = _read_jsonl(checkpoint_path) if resume else []
+    completed_keys = {
+        (record["configuration"], int(record["run"]))
+        for record in checkpoint_records
     }
+    progress(
+        f"start kind={kind} configurations={len(configs)} repetitions={repetitions} "
+        f"models={normalized_models or 'all'} output={destination} "
+        f"resume={resume} completed={len(completed_keys)}"
+    )
+    started = time.perf_counter()
+    models_used = {model for config in configs for model in config["models"]}
     try:
         for config_index, config in enumerate(configs, start=1):
             authority_label = config.get("authority") or config.get("authority_model") or "none"
             progress(f"configuration {config_index}/{len(configs)}: {config['name']} authority={authority_label}")
             for run_id in range(1, repetitions + 1):
+                key = (config["name"], run_id)
+                if key in completed_keys:
+                    progress(f"replication {run_id}/{repetitions} resumed=complete")
+                    continue
+                replication_started = time.perf_counter()
                 progress(f"replication {run_id}/{repetitions}")
                 seed = 100000 * config["pair_id"] + run_id
                 is_authority = bool(config["authority"] or config.get("authority_model"))
@@ -416,25 +617,49 @@ def run_experiment(kind: str, output_dir: str | Path | None = None, repetitions:
                     run_id, "authority" if is_authority else "control", config["scenario"],
                     seed, config["models"], config["authority"], config.get("authority_model"),
                     config["rounds"], config.get("fixed_stances"), config.get("shuffle_models", True),
+                    model_timeout_seconds, model_retries,
                 )
                 summary["configuration"] = config["name"]
                 summary["experiment"] = config["experiment"]
-                summaries.append(summary)
-                dialogues.extend(records)
+                summary["replication_elapsed_seconds"] = round(
+                    time.perf_counter() - replication_started, 3
+                )
+                summary["checkpointed_at"] = utc_now()
+                for record in records:
+                    record["configuration"] = config["name"]
+                    record["experiment"] = config["experiment"]
+                _append_jsonl(
+                    checkpoint_path,
+                    {"configuration": config["name"], "run": run_id, "summary": summary, "records": records},
+                )
+                completed_keys.add(key)
+                progress(
+                    f"replication complete {run_id}/{repetitions} "
+                    f"elapsed={summary['replication_elapsed_seconds']:.1f}s "
+                    f"model_failures={summary['model_failures']}"
+                )
             progress(f"configuration complete {config_index}/{len(configs)}")
+
+        all_checkpoints = _read_jsonl(checkpoint_path)
+        summaries = [record["summary"] for record in all_checkpoints]
+        dialogues = [row for record in all_checkpoints for row in record["records"]]
         fields = [
             "configuration", "experiment", "run", "scenario", "condition", "seed", "authority", "authority_stance",
-            "authority_model",
-            "model_assignment", "CR", "CR_opportunities", "delta_P", "F5", "P", "F",
+            "authority_model", "model_assignment", "model_timeout_seconds", "model_retries", "model_failures",
+            "model_attempts", "model_elapsed_seconds", "replication_elapsed_seconds", "checkpointed_at",
+            "CR", "CR_opportunities", "delta_P", "F5", "P", "F",
         ]
         with (destination / "metrics.csv").open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(summaries)
         with (destination / "dialogues.jsonl").open("w", encoding="utf-8") as handle:
             for row in dialogues:
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")
-        progress(f"complete summaries={len(summaries)} messages={len(dialogues)} elapsed={time.perf_counter() - started:.1f}s")
+        progress(
+            f"complete summaries={len(summaries)} messages={len(dialogues)} "
+            f"elapsed={time.perf_counter() - started:.1f}s"
+        )
     finally:
         for model in sorted(models_used):
             unload_ollama_model(model)

@@ -1,0 +1,60 @@
+{
+  "kind": "single-small-control",
+  "repetitions": 20,
+  "selected_models": [
+    "deepseek-r1:8b"
+  ],
+  "configurations": [
+    {
+      "name": "deepseek-r1:8b-1",
+      "experiment": "1",
+      "pair_id": 31,
+      "models": [
+        "deepseek-r1:8b",
+        "deepseek-r1:8b",
+        "deepseek-r1:8b",
+        "deepseek-r1:8b",
+        "deepseek-r1:8b",
+        "deepseek-r1:8b"
+      ],
+      "scenario": "balanced",
+      "authority": null,
+      "authority_model": null,
+      "rounds": 3
+    },
+    {
+      "name": "deepseek-r1:8b-2",
+      "experiment": "2",
+      "pair_id": 32,
+      "models": [
+        "deepseek-r1:8b",
+        "deepseek-r1:8b",
+        "deepseek-r1:8b",
+        "deepseek-r1:8b",
+        "deepseek-r1:8b",
+        "deepseek-r1:8b"
+      ],
+      "scenario": "support_majority",
+      "authority": null,
+      "authority_model": null,
+      "rounds": 3
+    },
+    {
+      "name": "deepseek-r1:8b-3",
+      "experiment": "3",
+      "pair_id": 33,
+      "models": [
+        "deepseek-r1:8b",
+        "deepseek-r1:8b",
+        "deepseek-r1:8b",
+        "deepseek-r1:8b",
+        "deepseek-r1:8b",
+        "deepseek-r1:8b"
+      ],
+      "scenario": "oppose_majority",
+      "authority": null,
+      "authority_model": null,
+      "rounds": 3
+    }
+  ]
+}

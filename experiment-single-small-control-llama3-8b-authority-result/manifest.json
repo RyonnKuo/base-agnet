@@ -1,0 +1,60 @@
+{
+  "kind": "single-small-control",
+  "repetitions": 20,
+  "selected_models": [
+    "llama3:8b"
+  ],
+  "configurations": [
+    {
+      "name": "llama3:8b-1",
+      "experiment": "1",
+      "pair_id": 11,
+      "models": [
+        "llama3:8b",
+        "llama3:8b",
+        "llama3:8b",
+        "llama3:8b",
+        "llama3:8b",
+        "llama3:8b"
+      ],
+      "scenario": "balanced",
+      "authority": null,
+      "authority_model": null,
+      "rounds": 3
+    },
+    {
+      "name": "llama3:8b-2",
+      "experiment": "2",
+      "pair_id": 12,
+      "models": [
+        "llama3:8b",
+        "llama3:8b",
+        "llama3:8b",
+        "llama3:8b",
+        "llama3:8b",
+        "llama3:8b"
+      ],
+      "scenario": "support_majority",
+      "authority": null,
+      "authority_model": null,
+      "rounds": 3
+    },
+    {
+      "name": "llama3:8b-3",
+      "experiment": "3",
+      "pair_id": 13,
+      "models": [
+        "llama3:8b",
+        "llama3:8b",
+        "llama3:8b",
+        "llama3:8b",
+        "llama3:8b",
+        "llama3:8b"
+      ],
+      "scenario": "oppose_majority",
+      "authority": null,
+      "authority_model": null,
+      "rounds": 3
+    }
+  ]
+}
